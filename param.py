@@ -2,11 +2,27 @@ import cv2
 import numpy as np
 
 
+
+LONG_COL = 4
+LAT_COL = 2
+####
+MAP_DIR = '../../Dataset/deploy_dataset39_52/39-52.pickle'
+DATASET_DIR = '../../Dataset/exid/Tracks/39_tracks.csv'
+PREDICTION_DIR = '../../Dataset/PredictionExport/POVL_SM_De.csv'# ConstantVelocity_39_De.csv'
+MM = False
+#'../../Dataset/Prediction_exid/predictionSM_De.csv'
+SAVE_DIR = 'images'
+TGT_SEQ_LEN = 25
+HEIGHT_X = -10
+HEIGHT_B = 0#int(5.06*HEIGHT_X)
+WIDTH_X = 10
+MAX_OBS_LEN = 25
+FPS_DIV = int(25/5)
 # General parameters
-MAX_PLOTS = 100
 PLOT_TEXTS = True
 PLOT_MAN = False
-
+N_PLOT = 100
+ONE_PER_TRACK = False
 #  Dataset/Model
 DATASET = 'exid'#'HIGHD'
 FPS = 5
@@ -62,6 +78,8 @@ COLOR_CODES = {'TV': (102,6,3), #blue
             'SV': (128,128,128),
             'LANE':(128,128,128),
             'GT_TRAJ':(0,0,0),
+            'GT_FUT_TRAJ':(100,100,100),
+            
             'PR_TRAJ':[
                 (180,119,31),#blue
                 (14,127,255),#orange
@@ -70,6 +88,7 @@ COLOR_CODES = {'TV': (102,6,3), #blue
                 (189,103,148),#purple
                 (255,0,255), #pink
                 ],
+            'LANE_MARKING': (40,39,214),#red
             'WIF_TRAJ':(0,150,0),
             'BACKGROUND':(255,255,255)
 }

@@ -26,6 +26,11 @@ import read_csv as rc
 import param as p
 import utils
 
+def check_collision(x1,x2, lon_dist, lat_dist):
+    if np.abs(x2[0]-x1[0])<lon_dist and np.abs(x2[1]-x1[1])<lat_dist:
+        return True
+    else:
+        return False
 def plot_frame(
         lane_markings,
         frame_data, 
@@ -190,6 +195,18 @@ def plot_frame(
             image = np.concatenate((image, man_bar), axis = 0)
                          
         return  image        
+
+
+def draw_line(image, traj, color, line_thickness = 1, dot_radious = 2):
+    for i in range(len(traj)-1):
+        #line
+        image = cv2.line(image, tuple(traj[i]), 
+                         tuple(traj[i+1]), color, line_thickness)
+        # dot
+        image = cv2.circle(image, tuple(traj[i]), 
+                           dot_radious, color, thickness=-1)
+        
+    return image
 
 def draw_lane_markings(image, image_width, lane_markings):
     # TODO: draw lane markings
