@@ -1,33 +1,46 @@
 import cv2
 import numpy as np
+import math
 
-
-
-LONG_COL = 4
+##### Task 
+MM = True
+CART = False
+CHECK_COL = True
+VIS_PRED = False
+CALC_MET = False
+DEBUG_MODE = False
+#####
+LONG_COL = 5
 LAT_COL = 2
 ####
 MAP_DIR = '../../Dataset/deploy_dataset39_52/39-52.pickle'
 DATASET_DIR = '../../Dataset/exid/Tracks/39_tracks.csv'
-PREDICTION_DIR = '../../Dataset/PredictionExport/POVL_SM_De.csv'# ConstantVelocity_39_De.csv'
-MM = False
+PREDICTION_FILE = 'mmntp39'
+PREDICTION_DIR = '../../Dataset/Prediction_exid/' + PREDICTION_FILE + '.csv'
+SAVE_DIR = 'images/' + PREDICTION_FILE + '/'
+
+if CART:
+    HEIGHT_X = -10
+    HEIGHT_B = 0#int(5.06*HEIGHT_X)
+    WIDTH_X = 10
+else:
+    HEIGHT_X = 8
+    HEIGHT_B = int(5.06*HEIGHT_X)
+    WIDTH_X = 2
+     
+
 #'../../Dataset/Prediction_exid/predictionSM_De.csv'
-SAVE_DIR = 'images'
 TGT_SEQ_LEN = 25
-HEIGHT_X = -10
-HEIGHT_B = 0#int(5.06*HEIGHT_X)
-WIDTH_X = 10
-MAX_OBS_LEN = 25
-FPS_DIV = int(25/5)
+MAX_OBS_LEN = 15
+FPS_DIV = int(5/5)
 # General parameters
 PLOT_TEXTS = True
 PLOT_MAN = False
-N_PLOT = 100
+N_PLOT = math.inf
 ONE_PER_TRACK = False
 #  Dataset/Model
 DATASET = 'exid'#'HIGHD'
 FPS = 5
-model_name =  'DMTP_exid_train_2023-02-22 11:38:01.533814'#'DMTP_exid_train_2023-02-21 18:56:42.572922'#'MMnTP_exid_train_2023-02-16 11:49:58.237413'#''#'MMnTP_highD_2022-12-07 18:26:29.329486'#'DMTP_highD_2022-11-29 13:21:03.655754'#'MTPMTT_highD_2022-08-22 15:47:03.709155'#'ManouvreTransformerTraj_highD_2022-07-12 15:48:02.307560'#'ManouvreTransformerTraj_highD_2022-07-12 15:48:02.307560'#'ManouvreTransformerTraj_highD_2022-06-27 14:46:40.899317'#'ManouvreTransformerTraj_highD_2022-06-14 15:14:02.050065'
-RESULT_FILE = "../results/vis_data/"+ model_name +".pickle"
 
 
 # Plot parameters:

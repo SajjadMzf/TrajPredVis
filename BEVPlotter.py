@@ -42,7 +42,7 @@ class BEVPlotter:
         prediction_dir,
         map_dir,
         file_id,
-        cart = True):
+        cart = p.CART):
         self.file_id = file_id
         self.cart = cart
         # Map
@@ -81,12 +81,13 @@ class BEVPlotter:
             self.image_height = int(map_data['image_height']*p.HEIGHT_X)
             self.image_width = int(map_data['image_width']*p.WIDTH_X)
             lane_markings = map_data['lane_nodes_frenet']
+            self.BIAS = np.ones((1,2), dtype= int)*0
         print(min([min(-1*lane['l'][:,1]) for lane in lane_markings]))        
         self.lanes = [lane_markings[0]['l']]
         for lane_marking in lane_markings:
             self.lanes.append(lane_marking['r'])
-            self.lanes.append(lane_marking['l'])
-        
+            #self.lanes.append(lane_marking['l'])
+        print(self.image_height, self.image_width)
         self.background_image = np.ones((self.image_height, self.image_width,3),\
                          dtype=np.uint8)*p.COLOR_CODES['BACKGROUND']
         self.background_image = self.background_image.astype(np.uint8)
@@ -117,6 +118,7 @@ class BEVPlotter:
         
         data_df = data_df.sort_values(by=['id', 'frame'])
         self.data = data_df.to_numpy()
+        #pdb.set_trace()
         # Traj Pred
         
         prediction_df = pd.read_csv(prediction_dir)
@@ -130,7 +132,7 @@ class BEVPlotter:
             (np.arange(0,len(self.prediction_ids)).reshape(-1,1),\
               self.prediction_ids), axis = 1)
         # itr, file, id, frame
-        print(self.prediction_ids[0,:100])
+        #print(self.prediction_ids)
         self.mode_probs = np.zeros((prediction.shape[0],3))
         if 'mode_prob' in list(prediction_df):
             self.multimodal = True
@@ -177,21 +179,22 @@ class BEVPlotter:
             for i in range(prediction.shape[0]):
                 if cart:
                     self.pred_trajs[i,0,:,0] = \
-                        np.array(list(map(float,prediction[i,7].split(';')))) 
+                        np.array(list(map(float,prediction[i,5].split(';')))) 
                     self.pred_trajs[i,0,:,1] = \
-                        np.array(list(map(float,prediction[i,8].split(';')))) 
+                        np.array(list(map(float,prediction[i,6].split(';')))) 
                 else:
                     self.pred_trajs[i,0,:,0] = \
                         np.array(list(map(float,prediction[i,3].split(';')))) 
                     self.pred_trajs[i,0,:,1] = \
                         np.array(list(map(float,prediction[i,4].split(';')))) 
-        
-        # for i in range(prediction.shape[0]):
-        #     self.gt_trajs[i,0,:,0] = \
-        #                 np.array(list(map(float,prediction[i,-2].split(';')))) 
-        #     self.gt_trajs[i,0,:,1] = \
-        #         np.array(list(map(float,prediction[i,-1].split(';'))))
-                
+        '''
+        if self.cart == False:
+            for i in range(prediction.shape[0]):
+                self.gt_trajs[i,0,:,0] = \
+                            np.array(list(map(float,prediction[i,-2].split(';')))) 
+                self.gt_trajs[i,0,:,1] = \
+                    np.array(list(map(float,prediction[i,-1].split(';'))))
+        '''        
         
     def plot_predictions(self):
         tv_ids = np.unique(self.prediction_ids[:,2]) 
@@ -200,13 +203,13 @@ class BEVPlotter:
         n_sample = 0
         n_collision = np.zeros((p.TGT_SEQ_LEN))
         collision_time = np.zeros((p.TGT_SEQ_LEN))
-        for tv_id in tv_ids:
+        for tv_itr, tv_id in enumerate(tv_ids):
+            print('TV:{}'.format(tv_id))
+            if p.DEBUG_MODE and tv_itr>50:
+                break
+
             tv_data = self.data[self.data[:,0]==tv_id]
             frames = self.prediction_ids[self.prediction_ids[:,2]==tv_id,3]
-            if n_plot<p.N_PLOT:
-                print('TV:{}, frames:{}'.format(tv_id,frames))
-            else:
-                print('TV:{}'.format(tv_id))
             indexes = self.prediction_ids[self.prediction_ids[:,2]==tv_id,0]
             for itr,frame in enumerate(frames):
                 ind = indexes[itr]
@@ -218,34 +221,40 @@ class BEVPlotter:
                 tv_gt_from_model = self.gt_trajs[ind]
                 tv_mode_prob = self.mode_probs[ind]
                 
-                n_col, col_time = self.check_violation(tv_id, frame, tv_hist, tv_gt_future, 
-                     tv_future, tv_gt_from_model,tv_mode_prob)
-                n_collision += n_col
-                collision_time += col_time
-                if p.MM == False:#TODO: complete code for multimodal
+                if p.CHECK_COL:
+                    n_col, col_time = self.check_violation(tv_id, frame, tv_hist, tv_gt_future, 
+                        tv_future, tv_gt_from_model,tv_mode_prob)
+                    n_collision += n_col
+                    collision_time += col_time
+                
+                if p.CALC_MET:#TODO: complete code for multimodal
                     mse, fut_len = self.calc_mse(tv_id,frame_data, tv_hist, tv_gt_future,\
                                     tv_future, tv_gt_from_model, tv_mode_prob)
                     rmse +=mse
-                else:
                     mse = 0
                     fut_len = 1
-                n_sample += fut_len
-                if n_plot<p.N_PLOT:
+                    n_sample += fut_len
+                if p.VIS_PRED and n_plot<p.N_PLOT:
                     if p.ONE_PER_TRACK and itr>0:
-                        break
+                        continue
                     n_plot +=1
                     self.plot_frame(tv_id,frame_data, tv_hist, tv_gt_future,\
-                                 tv_future, tv_gt_from_model, tv_mode_prob, metric = np.sqrt(mse/fut_len))
-            if p.MM and n_plot>p.N_PLOT:
-                break   
+                                 tv_future, tv_gt_from_model, tv_mode_prob, metric = np.sqrt(mse/fut_len)) 
                
-            
-        rmse = np.sqrt(rmse/n_sample)
-        
+        if p.CALC_MET:    
+            rmse = np.sqrt(rmse/n_sample)
+        else:
+            rmse = 0
         print('RMSE: {}, n_samples:{}'.format(rmse, n_sample)) 
-        print('N Collisions: {}'.format(n_collision))       
+        print('N Collisions: {}, TOTAL: {}'.format(n_collision, sum(n_collision))) 
+        print('N Colliding Timesteps: {}'.format(collision_time))      
+    
     def check_violation(self, tv_id, frame, tv_hist, tv_gt_future, 
                      tv_future, tv_gt_future_from_model,tv_mode_prob):
+        '''
+        n_colision: Number of collision (first time-step within a colliding scene)
+
+        '''
         n_collision = np.zeros((p.TGT_SEQ_LEN))
         collision_time = np.zeros((p.TGT_SEQ_LEN))
         tv_hist = np.copy(tv_hist)
@@ -270,7 +279,7 @@ class BEVPlotter:
             first_col_seq = -1
             collision_flag = False
             for seq in range(fut_len):
-                frame_data = self.data[self.data[:,1]== frame+seq*p.FPS_DIV]
+                frame_data = self.data[self.data[:,1]== frame+seq*p.FPS]
                 for veh_itr, veh_id in enumerate(frame_data[:,0]):
                     if veh_id != tv_id:
                         if pf.check_collision(tv_future[i,seq], 
@@ -287,6 +296,7 @@ class BEVPlotter:
                                       .format(tv_id, frame, seq))
             n_collision[first_col_seq] += collision_flag
         return n_collision, collision_time                       
+    
     def calc_mse(self, tv_id, frame_data, tv_hist, tv_gt_future, 
                      tv_future, tv_gt_future_from_model,tv_mode_prob):
         
@@ -333,23 +343,23 @@ class BEVPlotter:
         corner_y = lambda itr: int(
             correct_y(frame_data[itr, 3]*p.HEIGHT_X+p.HEIGHT_B)
             -frame_data[itr, 5]*p.HEIGHT_X/2)
-        '''
-        for veh_itr, veh_id in enumerate(frame_data[:,0]):
-            if veh_id == tv_id:
-                image = pf.draw_vehicle(image, 
-                                corner_x(veh_itr),
-                                corner_y(veh_itr), 
-                                int(frame_data[veh_itr, 6]*p.WIDTH_X), 
-                                int(frame_data[veh_itr, 5]*p.HEIGHT_X), 
-                                p.COLOR_CODES['TV'])
-            else:
-                image = pf.draw_vehicle(image, 
-                                corner_x(veh_itr),
-                                corner_y(veh_itr), 
-                                int(frame_data[veh_itr, 6]*p.WIDTH_X), 
-                                int(frame_data[veh_itr, 5]*p.HEIGHT_X), 
-                                p.COLOR_CODES['SV'])
-        '''                                                                                                                                                                                                     
+        if self.cart == False:
+            for veh_itr, veh_id in enumerate(frame_data[:,0]):
+                if veh_id == tv_id:
+                    image = pf.draw_vehicle(image, 
+                                    corner_x(veh_itr),
+                                    corner_y(veh_itr), 
+                                    int(frame_data[veh_itr, 6]*p.WIDTH_X), 
+                                    int(frame_data[veh_itr, 5]*p.HEIGHT_X), 
+                                    p.COLOR_CODES['TV'])
+                else:
+                    image = pf.draw_vehicle(image, 
+                                    corner_x(veh_itr),
+                                    corner_y(veh_itr), 
+                                    int(frame_data[veh_itr, 6]*p.WIDTH_X), 
+                                    int(frame_data[veh_itr, 5]*p.HEIGHT_X), 
+                                    p.COLOR_CODES['SV'])
+                                                                                                                                                                                                             
         
         # Plot history
         traj_hist = tv_hist[:,2:4]
@@ -388,149 +398,45 @@ class BEVPlotter:
                 traj_fut[:,1] = traj_fut[:,1]*p.HEIGHT_X
             else:
                 traj_fut[:,0] = traj_fut[:,0]*p.WIDTH_X + traj_hist[0,0]
-                traj_fut[:,1] = traj_fut[:,1]*p.HEIGHT_X + traj_hist[0,1]
+                traj_fut[:,1] = -1*traj_fut[:,1]*p.HEIGHT_X + traj_hist[0,1]
             traj_fut = traj_fut.astype(int)
             traj_fut = traj_fut[:fut_len]
             
             image = pf.draw_line(image,traj_fut - self.BIAS, 
                                 p.COLOR_CODES['PR_TRAJ'][i])
-        
+        '''
         tv_gt_future_from_model = tv_gt_future_from_model[0]
         tv_gt_future_from_model[:,0] = tv_gt_future_from_model[:,0]*p.WIDTH_X + traj_hist[0,0]
         tv_gt_future_from_model[:,1] = -1*tv_gt_future_from_model[:,1]*p.HEIGHT_X + traj_hist[0,1]
         tv_gt_future_from_model = tv_gt_future_from_model.astype(int)
         tv_gt_future_from_model = tv_gt_future_from_model[:fut_len]
-
-        #image = pf.draw_line(image,tv_gt_future_from_model, 
-        #                        p.COLOR_CODES['PR_TRAJ'][-1])
-
+        
+        image = pf.draw_line(image,tv_gt_future_from_model, 
+                                p.COLOR_CODES['PR_TRAJ'][-1])
+        '''
         # Write probabilities 
         #Save
-        file_name = 'File{}_TV{}_FRAME{}_RMSE{}.png'\
-            .format(self.file_id, tv_id, frame, metric)
-        file_dir = os.path.join(p.SAVE_DIR, file_name)
+        
+        file_fname = 'File{}'\
+            .format(self.file_id)
+        
+        tv_fname = 'TV{}'\
+            .format(tv_id)
+        image_name = 'FRAME{}_RMSE{}.png'\
+            .format(frame, metric)
+        
+        f_list = [file_fname, tv_fname]
+        file_dir = p.SAVE_DIR
+        if os.path.exists(file_dir) == False:
+                os.mkdir(file_dir)
+        for fold in f_list:
+            file_dir = os.path.join(file_dir,fold)
+            if os.path.exists(file_dir) == False:
+                os.mkdir(file_dir)
+        file_dir = os.path.join(file_dir, image_name)
         if not cv2.imwrite(file_dir, image):
             raise Exception("Could not write image: " + file_dir)
         
-
-
-
-
-
-
-
-
-
-
-
-    def plot(self, file_id_pairs = None, remove_ids_list = None):
-        
-        plot_ids = file_id_pairs if file_id_pairs is not None else self.plot_ids
-        if len(plot_ids)>p.MAX_PLOTS:
-            plot_ids = [plot_ids[i] for i in range(p.MAX_PLOTS)]
-        self.remove_ids_list = remove_ids_list
-        for i, plot_id in enumerate(plot_ids):
-            self.plot_one_scenario(plot_id)
-    
-    
-    def plot_one_scenario(self,plot_id):
-        
-        if plot_id not in self.plot_ids:
-            print('file tv pair {}-{} cannot be found!'.format(plot_id[0], plot_id[1]))
-            return 
-        else:
-            scenario_itr = self.plot_ids.index(plot_id)
-        
-
-        tv_id = self.sorted_scenarios[scenario_itr]['tv']
-        data_file = self.sorted_scenarios[scenario_itr]['data_file']
-        traj_min = self.sorted_scenarios[scenario_itr]['traj_min']
-        traj_max = self.sorted_scenarios[scenario_itr]['traj_max']
-        with open(p.map_paths[data_file], 'rb') as handle:
-            map_data = pickle.load(handle)
-        track_path = p.track_paths[data_file]
-        print(track_path)
-        print(p.map_paths[data_file])
-        pickle_path = p.frame_pickle_paths[data_file]
-        frames_data = rc.read_track_csv(track_path, pickle_path, group_by = 'frames', reload = False, fr_div = p.fr_div)
-        
-        driving_dir = map_data['driving_dir']
-        
-        print('FILE-TV: {}-{}, List of Available Frames: {}, dd:{}'.format(
-            plot_id[0], 
-            plot_id[1], 
-            self.sorted_scenarios[scenario_itr]['times'], 
-            driving_dir))
-        
-        np.set_printoptions(precision=2, suppress=True)
-        
-        # for each time-step
-        images = []
-        
-        for j,time in enumerate(self.sorted_scenarios[scenario_itr]['times']):
-            
-            if p.PLOT_MAN== False:
-                man_preds = []
-                man_labels = []
-            else:
-                man_preds = self.sorted_scenarios[scenario_itr]['man_preds'][j]
-                man_labels = self.sorted_scenarios[scenario_itr]['man_labels'][j]
-            mode_prob = self.sorted_scenarios[scenario_itr]['mode_prob'][j]
-            traj_labels = self.sorted_scenarios[scenario_itr]['traj_labels'][j]
-            
-            traj_preds = self.sorted_scenarios[scenario_itr]['traj_dist_preds'][j][:,:, :2]
-            frames = self.sorted_scenarios[scenario_itr]['frames'][j]
-            if plot_id[0]==44 and plot_id[1] == 290:
-                pdb.set_trace()
-            scenario_tuple = (traj_min, traj_max, man_labels, man_preds, 
-                              mode_prob, traj_labels, traj_preds, frames, 
-                              frames_data, map_data)
-            image = self.plot_one_frame(scenario_itr, tv_id, scenario_tuple, j)
-            images.append(image)
-        images = np.array(images)
-        scenario_id = 'File{}_TV{}_SN{}_F{}'.format(data_file, tv_id, 
-                                                    scenario_itr, frames[0])
-        pf.save_image_sequence(p.model_name, images, self.traj_vis_dir, 
-                               scenario_id, self.remove_ids_list is not None)              
-
-    
-    def plot_one_frame(self, scenario_itr, tv_id, scenario_tuple, time):
-        summary_image = False
-        (traj_min, traj_max, man_labels, man_preds, mode_prob, traj_labels, traj_preds, frames, frames_data, map_data) = scenario_tuple
-        driving_dir = map_data['driving_dir']
-        image_height = int(map_data['image_height']*p.Y_IMAGE_SCALE)
-        image_width = int(map_data['image_width']*p.X_IMAGE_SCALE)
-        lane_markings = map_data['lane_nodes_frenet']
-
-        in_seq_len = self.in_seq_len
-        tgt_seq_len = self.tgt_seq_len
-        frame = frames[in_seq_len-1]
-        #print(frames.shape)
-        frame_list = [frame_data[rc.FRAME][0] for frame_data in frames_data]
-        frame_data = frames_data[frame_list.index(frame)]
-        
-        
-        traj_labels = traj_labels*(traj_max-traj_min)+traj_min
-        traj_labels = np.cumsum(traj_labels, axis = 0)
-        traj_preds =  traj_preds*(traj_max-traj_min)+traj_min
-        traj_preds = np.cumsum(traj_preds, axis = 1)
-        #print(traj_labels.shape)
-        #pdb.set_trace()  
-        
-        image = pf.plot_frame(
-            lane_markings,
-            frame_data,
-            tv_id, 
-            driving_dir,
-            frame,
-            man_labels,
-            man_preds,
-            mode_prob,
-            traj_labels,
-            traj_preds,
-            image_width,
-            image_height)            
-        return image
         
         
 
