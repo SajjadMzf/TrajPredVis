@@ -92,7 +92,12 @@ class BEVPlotter:
                          dtype=np.uint8)*p.COLOR_CODES['BACKGROUND']
         self.background_image = self.background_image.astype(np.uint8)
         
+        self.y_lower_lim = math.inf
+        self.y_upper_lim = -1*math.inf
         for lane in self.lanes:
+            self.y_lower_lim = min(self.y_lower_lim, min(lane[:,1]))
+            self.y_upper_lim = max(self.y_upper_lim, max(lane[:,1]))
+            
             lane[:,0] = lane[:,0]*p.WIDTH_X 
             lane[:,1] = lane[:,1]*p.HEIGHT_X + p.HEIGHT_B
             if self.cart == False:
@@ -107,6 +112,7 @@ class BEVPlotter:
             self.background_image = pf.draw_line(self.background_image,
                                                 lane - self.BIAS, 
                                                 p.COLOR_CODES['LANE_MARKING'])
+        print(self.y_lower_lim, self.y_upper_lim)
         # Traj Data
         
         data_df = pd.read_csv(data_dir)
@@ -203,6 +209,13 @@ class BEVPlotter:
         n_sample = 0
         n_collision = np.zeros((p.TGT_SEQ_LEN))
         collision_time = np.zeros((p.TGT_SEQ_LEN))
+        p_n_collision = np.zeros((p.TGT_SEQ_LEN))
+        p_collision_time = np.zeros((p.TGT_SEQ_LEN))
+        n_offroad = np.zeros((p.TGT_SEQ_LEN))
+        offroad_time = np.zeros((p.TGT_SEQ_LEN))
+        p_n_offroad = np.zeros((p.TGT_SEQ_LEN))
+        p_offroad_time = np.zeros((p.TGT_SEQ_LEN))
+        n_prediction = 0
         for tv_itr, tv_id in enumerate(tv_ids):
             print('TV:{}'.format(tv_id))
             if p.DEBUG_MODE and tv_itr>50:
@@ -212,6 +225,7 @@ class BEVPlotter:
             frames = self.prediction_ids[self.prediction_ids[:,2]==tv_id,3]
             indexes = self.prediction_ids[self.prediction_ids[:,2]==tv_id,0]
             for itr,frame in enumerate(frames):
+                n_prediction += 1
                 ind = indexes[itr]
                 assert(self.prediction_ids[ind, 3] == frame)
                 frame_data = self.data[self.data[:,1]== frame]
@@ -222,10 +236,18 @@ class BEVPlotter:
                 tv_mode_prob = self.mode_probs[ind]
                 
                 if p.CHECK_COL:
-                    n_col, col_time = self.check_violation(tv_id, frame, tv_hist, tv_gt_future, 
+                    n_col, col_time, p_n_col, p_col_time, n_off, off_time, p_n_off, p_off_time\
+                          = self.check_violation(tv_id, frame, tv_hist, tv_gt_future, 
                         tv_future, tv_gt_from_model,tv_mode_prob)
                     n_collision += n_col
                     collision_time += col_time
+                    n_offroad += n_off
+                    offroad_time += off_time
+                    p_n_collision += p_n_col
+                    p_collision_time += p_col_time
+                    p_n_offroad += p_n_off
+                    p_offroad_time += p_off_time
+                
                 
                 if p.CALC_MET:#TODO: complete code for multimodal
                     mse, fut_len = self.calc_mse(tv_id,frame_data, tv_hist, tv_gt_future,\
@@ -246,9 +268,23 @@ class BEVPlotter:
         else:
             rmse = 0
         print('RMSE: {}, n_samples:{}'.format(rmse, n_sample)) 
-        print('N Collisions: {}, TOTAL: {}'.format(n_collision, sum(n_collision))) 
+        print('N Collisions: {}'.format(n_collision)) 
         print('N Colliding Timesteps: {}'.format(collision_time))      
-    
+        print('Prob N Collisions: {}'.format(p_n_collision)) 
+        print('N Colliding Timesteps: {}'.format(p_collision_time))
+        
+        print('N Offroad: {}'.format(n_offroad)) 
+        print('N Offroad Timesteps: {}'.format(offroad_time))      
+        print('Prob N Offroad: {}'.format(p_n_offroad)) 
+        print('N Offroad Timesteps: {}'.format(p_offroad_time))
+        print('Total Samples: {}'.format(n_prediction))
+        print('CollisionRate:{}, OffRoadRate:{}'.format(\
+            sum(n_collision)/(p.N_MODE*n_prediction),\
+                  sum(n_offroad)/(p.N_MODE*n_prediction)))
+        print('PCollisionRate:{}, POffRoadRate:{}'.format(\
+            sum(p_n_collision)/(p.N_MODE*n_prediction),\
+                  sum(p_n_offroad)/(p.N_MODE*n_prediction)))
+
     def check_violation(self, tv_id, frame, tv_hist, tv_gt_future, 
                      tv_future, tv_gt_future_from_model,tv_mode_prob):
         '''
@@ -257,11 +293,18 @@ class BEVPlotter:
         '''
         n_collision = np.zeros((p.TGT_SEQ_LEN))
         collision_time = np.zeros((p.TGT_SEQ_LEN))
+        p_n_collision = np.zeros((p.TGT_SEQ_LEN))
+        p_collision_time = np.zeros((p.TGT_SEQ_LEN))
+        n_offroad = np.zeros((p.TGT_SEQ_LEN))
+        offroad_time = np.zeros((p.TGT_SEQ_LEN))
+        p_n_offroad = np.zeros((p.TGT_SEQ_LEN))
+        p_offroad_time = np.zeros((p.TGT_SEQ_LEN))
         tv_hist = np.copy(tv_hist)
         tv_gt_future = np.copy(tv_gt_future)
         tv_future = np.copy(tv_future)
         traj_hist = tv_hist[:,2:4]
         
+
         traj_fut_gt = tv_gt_future[:,2:4]
         traj_fut_gt = traj_fut_gt[0:-1:p.FPS_DIV]
         traj_fut_gt_len = traj_fut_gt.shape[0]
@@ -274,28 +317,47 @@ class BEVPlotter:
             tv_future[i,:,0] += traj_hist[-1,0]
             tv_future[i,:,1] += traj_hist[-1,1]
         tv_future = tv_future[:,:fut_len]
-        
+        mode_sort = np.argsort(-1*tv_mode_prob, axis = -1) 
+        assert(n_mode>=p.N_MODE)
+        n_mode = p.N_MODE
+        tv_future_sorted = tv_future[mode_sort[:n_mode]]
+
         for i in range(n_mode):
             first_col_seq = -1
             collision_flag = False
+            first_off_seq = -1
+            offroad_flag = False
+
+            mode_prob = tv_mode_prob[i]
             for seq in range(fut_len):
                 frame_data = self.data[self.data[:,1]== frame+seq*p.FPS]
                 for veh_itr, veh_id in enumerate(frame_data[:,0]):
                     if veh_id != tv_id:
-                        if pf.check_collision(tv_future[i,seq], 
+                        if pf.check_collision(tv_future_sorted[i,seq], 
                                               [frame_data[veh_itr, 2], 
                                                frame_data[veh_itr, 3]], 
                                                p.LONG_COL,
                                                p.LAT_COL):
                             collision_time[seq] +=1
+                            p_collision_time[seq] += mode_prob
                             collision_flag = True
                             if first_col_seq<0:
                                 first_col_seq = seq
-                            if seq<5:
-                                print('Collision ID-FRAME: {}-{}, Seq: {}'\
-                                      .format(tv_id, frame, seq))
+                        if pf.check_offroad(tv_future_sorted[i,seq,1], self.y_lower_lim, self.y_upper_lim):
+                            offroad_time[seq] +=1
+                            p_offroad_time[seq] += mode_prob
+                            offroad_flag = True
+                            if first_off_seq<0:
+                                first_off_seq = seq
             n_collision[first_col_seq] += collision_flag
-        return n_collision, collision_time                       
+            p_n_collision[first_col_seq] += collision_flag*mode_prob
+
+            n_offroad[first_off_seq] += offroad_flag
+            p_n_offroad[first_off_seq] += offroad_flag*mode_prob
+
+            
+        return n_collision, collision_time, p_n_collision, p_collision_time,\
+            n_offroad, offroad_time, p_n_offroad, p_offroad_time                     
     
     def calc_mse(self, tv_id, frame_data, tv_hist, tv_gt_future, 
                      tv_future, tv_gt_future_from_model,tv_mode_prob):

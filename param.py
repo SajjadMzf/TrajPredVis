@@ -6,6 +6,7 @@ import math
 MM = True
 CART = False
 CHECK_COL = True
+N_MODE = 3
 VIS_PRED = False
 CALC_MET = False
 DEBUG_MODE = False
@@ -15,7 +16,7 @@ LAT_COL = 2
 ####
 MAP_DIR = '../../Dataset/deploy_dataset39_52/39-52.pickle'
 DATASET_DIR = '../../Dataset/exid/Tracks/39_tracks.csv'
-PREDICTION_FILE = 'mmntp39'
+PREDICTION_FILE = 'SMTfixed_Te' # DMTfixed_TE, SMTfixed_TE
 PREDICTION_DIR = '../../Dataset/Prediction_exid/' + PREDICTION_FILE + '.csv'
 SAVE_DIR = 'images/' + PREDICTION_FILE + '/'
 

@@ -26,6 +26,11 @@ import read_csv as rc
 import param as p
 import utils
 
+def check_offroad(y, y_min, y_max):
+    if y< y_min or y>y_max:
+        return True
+    else:
+        return False
 def check_collision(x1,x2, lon_dist, lat_dist):
     if np.abs(x2[0]-x1[0])<lon_dist and np.abs(x2[1]-x1[1])<lat_dist:
         return True
